@@ -1,0 +1,22 @@
+{
+  "images": {
+    "id": "Long",
+    "path":  "String",
+    "fingerprint":  "Array[Float]",
+    "tags":  "Array[tag]",
+    "faces": "Array[face]"
+  },
+  "tags": {
+    "id": "Long",
+    "name": "String"
+  },
+  "faces": {
+    "id": "Long",
+    "person": "person",
+    "path": "String"
+  },
+  "people": {
+    "id": "Long",
+    "name": "String"
+  }
+}
