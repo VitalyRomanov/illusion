@@ -5,3 +5,4 @@ channels:
 dependencies:
   - opencv=4.5.1
   - python=3.9.1
+  - peewee=3.14.1
