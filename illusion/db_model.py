@@ -1,115 +1,130 @@
 import hashlib
 import os
-import peewee as pw
+import illusion.datamodel as dm
 
 
-def get_database_path():
-    return "illusion.db"
+class Tag:
+    @staticmethod
+    def get_or_create(name):
+        try:
+            tag = dm.Tag.get(name=name)
+        except:  # TagDoesNotExist:
+            tag = dm.Tag.create(name=name)
+        return tag
 
 
-database = pw.SqliteDatabase(get_database_path(), pragmas={'foreign_keys': 1})
+class TagSet(set):
+    def __init__(self, image):
+        self._image = image
 
+    def iter(self):
+        return self._image.tags
 
-def get_database():
-    # home = str(Path.home())
-    return database
+    def add(self, tag_name):
+        tag = Tag.get_or_create(tag_name)
+        # ImageTag.create(image=image, tag=t)
+        dm.ImageTag.create(image=self._image, tag=tag)
 
+    def __repr__(self):
+        return {t.name for t in self._image.tags}
 
-class IllusionDb(pw.Model):
-    class Meta:
-        database = get_database()
-
-
-class Image(IllusionDb):
-    id = pw.AutoField()
-    path = pw.CharField(max_length=4096, index=True, unique=True)
-    md5 = pw.CharField(index=True) # TODO unique
-
-
-class Tag(IllusionDb):
-    id = pw.AutoField()
-    name = pw.CharField(index=True)
-
-
-class Person(IllusionDb):
-    id = pw.AutoField()
-    name = pw.CharField(index=True)
-
-
-class Face(IllusionDb):
-    id = pw.AutoField()
-    image = pw.ForeignKeyField(Image, backref="faces", on_delete="CASCADE", on_update="CASCADE")
-    path = pw.CharField(max_length=4096, index=True, unique=True)
-
-
-class FacePerson(IllusionDb):
-    face = pw.ForeignKeyField(Face, backref="people", on_delete="CASCADE", on_update="CASCADE")
-    person = pw.ForeignKeyField(Person, backref="faces", on_delete="CASCADE", on_update="CASCADE")
-
-
-class ImageTag(IllusionDb):
-    image = pw.ForeignKeyField(Image, backref="tags", on_delete="CASCADE", on_update="CASCADE")
-    tag = pw.ForeignKeyField(Tag, backref="images", on_delete="CASCADE", on_update="CASCADE")
-
-    class Meta:
-        indexes = (
-            (('image_id', 'tag_id'), True),
-        )
-        primary_key = False
-
-
-class DbManager:
-    def __init__(self):
-        self.database = get_database()
-        self.create_tables()
-        # self.database.connect()
-
-    def create_tables(self):
-        self.database.create_tables([
-            Image, Tag, Person, Face, ImageTag, FacePerson
-        ])
-
-    def add_image(self, path):
-        if os.path.isfile(path):
-            md5 = hashlib.md5(open(path,'rb').read()).hexdigest()
-        else:
-            md5 = "" # TODO remove
-
-        image = Image.create(path=path, md5=md5)
-
-        return image
-
-    def add_tags_to_image(self, image, tags):
+    def update(self, tags):
         for tag in tags:
-            try:
-                t = Tag.get(name=tag)
-            except: # TagDoesNotExist:
-                t = Tag.create(name=tag)
-            ImageTag.create(image=image, tag=t)
+            self.add(tag)
 
-    def add_person(self, name):
-        person = Person.create(name=name)
-        return person
+    def pop(self, tag):
+        dm.ImageTag.delete().where(dm.ImageTag.image_id == self._image.id and dm.ImageTag.tag_id == tag)
 
-    def add_face(self, face_path, image, person=None):
-        face = Face.create(image=image, path=face_path)
 
-        if person is not None:
-            FacePerson.create(face=face, person=person)
+class FaceSet(set):
+    def __init__(self, image):
+        self._image = image
 
-        return face
+    def iter(self):
+        return self._image.faces
 
-    # def __del__(self):
-    #     self.database.close()
+    def __repr__(self):
+        return {t.name for t in self._image.faces}
+
+    def pop(self, face_id):
+        dm.Face.delete().where(Face.id == face_id)
+
+
+class Image:
+    def __init__(self, path):
+        if os.path.isfile(path):
+            md5 = hashlib.md5(open(path, 'rb').read()).hexdigest()
+        else:
+            raise FileNotFoundError(f"File nod found: {path}")
+
+        self._image = dm.Image.create(path=path, md5=md5)
+        self._tags = TagSet(self._image)
+        self._faces = FaceSet(self._image)
+
+    @property
+    def id(self):
+        return self._image.id
+
+    @property
+    def path(self):
+        return self._image.path
+
+    @property
+    def md5(self):
+        return self._image.md5
+
+    @property
+    def tags(self):
+        return self._tags
+
+    def faces(self):
+        return self._image.faces
+
+    def detect_faces(self):
+        pass
+
+    def add_tags(self, tags):
+        for tag in tags:
+            self._tags.add(tag)
+
+
+class Person:
+    def __init__(self, name):
+        self._person = dm.Person.create(name=name)
+
+    @property
+    def id(self):
+        return self._person.id
+
+    @property
+    def name(self):
+        return self._person.name
+
+
+class Face:
+    def __init__(self, image, thumbnail_path):
+        self._face = dm.Face.create(image=image, path=thumbnail_path)
+
+    @property
+    def id(self):
+        return self._face.id
+
+    @property
+    def image(self):
+        return self._face.image
+
+    @property
+    def thumbnail_path(self):
+        return self._face.thumbnail_path
+
+    def __del__(self):
+        pass
+        # dm.Face.delete().where(Face.id == self._face.id)
+        # TODO
+        #  mark as removed
 
 
 if __name__ == "__main__":
-    manager = DbManager()
-    image1 = manager.add_image("image/path")
-    image2 = manager.add_image("image2/path")
-    manager.add_tags_to_image(image1, ["tag1", "tag2"])
-    manager.add_tags_to_image(image2, ["tag1"])
-    person = manager.add_person("Dude")
-    manager.add_face("face1/path", image1, person)
-    manager.add_face("face2/path", image2)
+    image = Image("/Volumes/External/dev/illusion/test_photo.jpg")
+    image.add_tags(["!!", "##"])
 
