@@ -7,7 +7,7 @@ class FaceExtractor:
     def __call__(self, image):
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         faces = self.face_cascade.detectMultiScale(gray, 1.1, 4)
-        return faces
+        return [(x, y, w, h, cv2.resize(image[y:y+h, x:x+w], (299, 299))) for (x, y, w, h) in faces]
 
 
 def draw_boxes(image, boxes):
