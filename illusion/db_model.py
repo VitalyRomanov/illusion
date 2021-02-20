@@ -1,7 +1,10 @@
 import hashlib
 import os
-import illusion.datamodel as dm
 
+import cv2
+
+import illusion.datamodel as dm
+from illusion.FaceExtractor import FaceExtractor
 
 class Tag:
     @staticmethod
@@ -10,6 +13,17 @@ class Tag:
             tag = dm.Tag.get(name=name)
         except:  # TagDoesNotExist:
             tag = dm.Tag.create(name=name)
+        return tag
+
+    @staticmethod
+    def get(id=None, name=None):
+        if id is not None:
+            tag = dm.Tag.get(id=id)
+        elif name is not None:
+            tag = dm.Tag.get(name=name)
+        else:
+            raise ValueError("Either `id` or `name` should be provided")
+
         return tag
 
 
@@ -26,14 +40,15 @@ class TagSet(set):
         dm.ImageTag.create(image=self._image, tag=tag)
 
     def __repr__(self):
-        return {t.name for t in self._image.tags}
+        return repr({t.tag.name for t in self._image.tags})
 
     def update(self, tags):
         for tag in tags:
             self.add(tag)
 
-    def pop(self, tag):
-        dm.ImageTag.delete().where(dm.ImageTag.image_id == self._image.id and dm.ImageTag.tag_id == tag)
+    def pop(self, tag_name):
+        tag = Tag.get(name=tag_name)
+        dm.ImageTag.delete().where(dm.ImageTag.image_id == self._image.id and dm.ImageTag.tag_id == tag.id).execute()
 
 
 class FaceSet(set):
@@ -51,6 +66,9 @@ class FaceSet(set):
 
 
 class Image:
+
+    face_extractor = FaceExtractor("/Volumes/External/dev/illusion/haarcascade_frontalface_default.xml")
+
     def __init__(self, path):
         if os.path.isfile(path):
             md5 = hashlib.md5(open(path, 'rb').read()).hexdigest()
@@ -73,7 +91,6 @@ class Image:
     def md5(self):
         return self._image.md5
 
-    @property
     def tags(self):
         return self._tags
 
@@ -81,11 +98,26 @@ class Image:
         return self._image.faces
 
     def detect_faces(self):
-        pass
+        faces = self.face_extractor(cv2.imread(self._image.path))
+
+        for_analysis = []
+        for x, y, w, h, thumbnail in faces:
+            face = Face(image=self._image, x=x, y=y, w=w, h=h)
+            face.set_thumbnail_path(f"thumbnail_{face.id}.jpg")
+            cv2.imwrite(face.thumbnail_path, thumbnail)
+            for_analysis.append(face.thumbnail_path)
+
+        # TODO
+        #  run analysis
+        #  decide on person name assignment after clustering
 
     def add_tags(self, tags):
         for tag in tags:
             self._tags.add(tag)
+
+    def remove_tags(self, tags):
+        for tag in tags:
+            self._tags.pop(tag)
 
 
 class Person:
@@ -102,8 +134,8 @@ class Person:
 
 
 class Face:
-    def __init__(self, image, thumbnail_path):
-        self._face = dm.Face.create(image=image, path=thumbnail_path)
+    def __init__(self, image, x, y, w, h):
+        self._face = dm.Face.create(image=image, x=x, y=y, w=w, h=h)
 
     @property
     def id(self):
@@ -117,6 +149,10 @@ class Face:
     def thumbnail_path(self):
         return self._face.thumbnail_path
 
+    def set_thumbnail_path(self, path):
+        self._face.thumbnail_path = path
+        self._face.save()
+
     def __del__(self):
         pass
         # dm.Face.delete().where(Face.id == self._face.id)
@@ -127,4 +163,8 @@ class Face:
 if __name__ == "__main__":
     image = Image("/Volumes/External/dev/illusion/test_photo.jpg")
     image.add_tags(["!!", "##"])
+    image.add_tags(["??"])
+    image.remove_tags(["??"])
+    image.detect_faces()
+    print()
 
