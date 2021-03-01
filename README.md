@@ -27,3 +27,4 @@ python illusion/FaceExtractor.py haarcascade_frontalface_default.xml test_photo.
 - [ ] Implement similarity analizatior for faces stored in database
 - [ ] Implement image search with natural language query using pretrained yolo models
 - [ ] Implement graphical interface
+- [ ] Assign user tags automatically
