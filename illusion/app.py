@@ -1,6 +1,7 @@
 import json
 import os
 import configparser
+from pathlib import Path
 from pprint import pprint
 
 
@@ -21,7 +22,7 @@ class App:
         pprint(self.config)
 
     def set_conf_location(self):
-        self.conf_dir = os.path.join(os.getenv("HOME"), ".illusion")
+        self.conf_dir = os.path.join(Path.home(), ".illusion")
         self.conf_file = os.path.join(self.conf_dir, "conf")
         os.environ["ILLUSION_CONF"] = self.conf_dir
 
