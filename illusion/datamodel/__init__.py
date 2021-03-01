@@ -1,8 +1,9 @@
 import peewee as pw
+import os
 
 
 def get_database_path():
-    return "illusion.db"
+    return os.path.join(os.environ["ILLUSION_CONF"], "illusion.db")
 
 
 database = pw.SqliteDatabase(get_database_path(), pragmas={'foreign_keys': 1})
@@ -20,8 +21,9 @@ class IllusionDb(pw.Model):
 
 class Image(IllusionDb):
     id = pw.AutoField()
-    path = pw.CharField(max_length=4096, index=True) #, unique=True)
-    md5 = pw.CharField(index=True) # TODO unique
+    path = pw.CharField(max_length=4096, index=True, unique=True)
+    md5 = pw.CharField(index=True)  # do not make this unique. this will be used to find duplicates
+    faces_detected = pw.BooleanField(default=False)
 
 
 class Tag(IllusionDb):
@@ -39,6 +41,7 @@ class Face(IllusionDb):
     image = pw.ForeignKeyField(Image, backref="faces", on_delete="CASCADE", on_update="CASCADE")
     thumbnail_path = pw.CharField(max_length=4096, index=True, null=True)
     deleted = pw.BooleanField(default=False)
+    recognized = pw.BooleanField(default=False)
     x = pw.IntegerField()
     y = pw.IntegerField()
     h = pw.IntegerField()
