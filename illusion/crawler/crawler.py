@@ -1,3 +1,4 @@
+from collections import Set
 from pathlib import Path
 
 
@@ -8,11 +9,12 @@ class Crawler:
     shares newly found images via __new_images_queue__ queue
     """
     __new_images_queue__ = None
-    __scanned_files__ = {}
+    __scanned_files__ = set()
     __extensions__ = ['.jpg', '.jpeg', '.png']
 
-    def __init__(self, new_images_queue):
+    def __init__(self, new_images_queue, discovered_files=()):
         self.__new_images_queue__ = new_images_queue
+        self.__scanned_files__.update(discovered_files)
 
     def __find_in_dir__(self, dir, recursive=True):
         """
@@ -25,14 +27,11 @@ class Crawler:
         path_pattern = ('**' if recursive else '*') + "/*"
         for file in dir_path.glob(path_pattern):
             if file.suffix in self.__extensions__:
-                file_last_edited = file.stat().st_mtime
-                if (file.name not in self.__scanned_files__.keys()) or (
-                        self.__scanned_files__[file.name] != file_last_edited):
-                    self.__new_images_queue__.put(file.name)
-                    self.__scanned_files__[file.name] = file_last_edited  # last content edit (consider inode)
+                if file.name not in self.__scanned_files__:
+                    self.__new_images_queue__.put(file.absolute())
+                    self.__scanned_files__.add(file.absolute())
                     # print(file)
 
-        # print(self.__new_images_queue__.qsize())
 
     def find_in_dirs(self, dirs, recursive=True):
         """
@@ -51,4 +50,4 @@ class Crawler:
         for file_name in self.__scanned_files__:
             file = Path(file_name)
             if not file.is_file() or not file.exists():
-                self.__scanned_files__.pop(file_name)
+                self.__scanned_files__.remove(file_name)
