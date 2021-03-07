@@ -26,7 +26,7 @@ class Crawler:
         dir_path = Path(dir)
         path_pattern = ('**' if recursive else '*') + "/*"
         for file in dir_path.glob(path_pattern):
-            if file.suffix in self.__extensions__:
+            if file.suffix.lower() in self.__extensions__:
                 if file.name not in self.__scanned_files__:
                     self.__new_images_queue__.put(file.absolute())
                     self.__scanned_files__.add(file.absolute())
