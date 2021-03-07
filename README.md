@@ -17,7 +17,7 @@ python illusion/FaceExtractor.py haarcascade_frontalface_default.xml test_photo.
 ## Roadmap
 - [ ] Choose storage schema
 - [ ] Choose database
-- [ ] Implement continuous scanning folder for images
+- [ ] Implement continuous scanning folder for images ([file system listeners](https://blog.magrathealabs.com/filesystem-events-monitoring-with-python-9f5329b651c3))
 - [ ] Implement saving scan results in a database
 - [ ] Implement fingerprinting with histogram for [near duplicate detection](https://stackoverflow.com/questions/11541154/checking-images-for-similarity-with-opencv)
 - [ ] Find suitable on-disk index for high dimensional vectors (for similarity queries, e.g. searching similar images or similar faces) (check [annoy](https://github.com/spotify/annoy) or [faiss](https://github.com/facebookresearch/faiss/wiki/Installing-Faiss))
