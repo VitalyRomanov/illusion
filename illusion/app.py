@@ -1,8 +1,12 @@
 import json
+import logging
 import os
 import configparser
 from pathlib import Path
 from pprint import pprint
+from multiprocessing import Process
+from multiprocessing import Queue
+from time import sleep
 
 
 class App:
@@ -53,10 +57,29 @@ class App:
         if not os.path.isdir(self.thumbnails_path):
             os.mkdir(self.thumbnails_path)
 
+    def init_image_store(self):
+        from illusion.DbPopulator import image_store_main_loop
+        self.image_store_outbox = Queue()
+        self.image_store_inbox = Queue()
+        self.image_store_proc = Process(
+            target=image_store_main_loop, args=(
+                self.config["monitoring_folders"], self.image_store_outbox, self.image_store_inbox
+            )
+        )
+        self.image_store_proc.start()
+
     def exec(self):
-        from illusion.DbPopulator import main_test
-        main_test()
+        # from illusion.DbPopulator import main_test
+        # main_test()
         # start ¡¡¡DB POPULATOR!!!
+        self.init_image_store()
+
+        while True:
+            while not self.image_store_inbox.empty():
+                incoming = self.image_store_inbox.get()
+                logging.info(f"Received message {incoming['message']}")
+                print(incoming)
+            sleep(3)
 
 
 if __name__ == "__main__":
