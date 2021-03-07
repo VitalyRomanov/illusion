@@ -25,10 +25,49 @@ class Image(IllusionDb):
     md5 = pw.CharField(index=True)  # do not make this unique. this will be used to find duplicates
     faces_detected = pw.BooleanField(default=False)
 
+    @classmethod
+    def get_image(cls, id=None, path=None):
+        try:
+            if id is not None:
+                return cls.get(id=id)
+            if path is not None:
+                return cls.get(path=path)
+        except:
+            return None
+
+    @classmethod
+    def get_tags(cls, image_id):
+        return cls.get_image(id=image_id).tags
 
 class Tag(IllusionDb):
     id = pw.AutoField()
     name = pw.CharField(index=True)
+
+    @classmethod
+    def get_tag_name(cls, tag_id):
+        tag = cls.get(id=tag_id)
+        return tag.name
+
+    @classmethod
+    def get_tag(cls, id=None, name=None):
+        if id is not None:
+            tag = cls.get(id=id)
+        elif name is not None:
+            tag = cls.get(name=name)
+        else:
+            raise ValueError("Either `id` or `name` should be provided")
+
+        return tag
+
+    @classmethod
+    def get_or_create(cls, name):
+        try:
+            tag = cls.get(name=name)
+        except:  # TagDoesNotExist:
+            tag = cls.create(name=name)
+        return tag
+
+
 
 
 class Person(IllusionDb):
