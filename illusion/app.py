@@ -58,6 +58,10 @@ class App:
             os.mkdir(self.thumbnails_path)
 
     def init_image_store(self):
+        """
+        Start image store main loop in a separate process.
+        :return:
+        """
         from illusion.DbPopulator import image_store_main_loop
         self.image_store_outbox = Queue()
         self.image_store_inbox = Queue()
@@ -69,17 +73,16 @@ class App:
         self.image_store_proc.start()
 
     def exec(self):
-        # from illusion.DbPopulator import main_test
-        # main_test()
-        # start ¡¡¡DB POPULATOR!!!
         self.init_image_store()
 
         while True:
             while not self.image_store_inbox.empty():
+                # instead of checking incoming messages in the loop, an event listener should be created
+                # look into signals and slots in PyQt
                 incoming = self.image_store_inbox.get()
                 logging.info(f"Received message {incoming['message']}")
                 print(incoming)
-            sleep(3)
+            sleep(3) # ??? this needs to be run together with GUI
 
 
 if __name__ == "__main__":

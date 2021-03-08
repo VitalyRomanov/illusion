@@ -84,6 +84,10 @@ class ProcessManager:
         self.output_queue = output_queue
 
     def check_new_images(self):
+        """
+        Get new images from the crawler and add them to the DB
+        :return:
+        """
         new_images = self.image_store.add_images(self.crawl_manager.fetch())
 
         if new_images:
@@ -92,8 +96,12 @@ class ProcessManager:
         self.crawl_manager.run()
 
     def wait_for_incoming(self):
+        """
+        Wait for messages from gui. This is intended to be the longest part of the main loop
+        :return:
+        """
         try:
-            self.input_queue.get(timeout=5)
+            self.input_queue.get(timeout=5)  # TODO adjust timeout
         except Empty:
             pass
 
@@ -132,7 +140,14 @@ class ImageStore:
 
 
 def image_store_main_loop(monitoring_folders, input_queue: Queue = None, output_queue: Queue = None):
-    image_store = ImageStore()
+    """
+    Start main loop for the database and helper processes.
+    :param monitoring_folders: List of folders to pass on to the crawler for monitoring.
+    :param input_queue: queue for receiving messages from gui
+    :param output_queue: queue for sentding messages back to gui
+    :return:
+    """
+    image_store = ImageStore()  # should this be moved inside process manager?
 
     existing_images = [Image.wrap(image) for image in image_store.get_existing()]
     output_queue.put({"message": "existing", "content": existing_images})
