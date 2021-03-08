@@ -88,8 +88,8 @@ class Face(IllusionDb):
 
 
 class FacePerson(IllusionDb):
-    face = pw.ForeignKeyField(Face, backref="people", on_delete="CASCADE", on_update="CASCADE")
-    person = pw.ForeignKeyField(Person, backref="faces", on_delete="CASCADE", on_update="CASCADE")
+    face = pw.ForeignKeyField(Face, backref="person", on_delete="CASCADE", on_update="CASCADE")
+    person = pw.ForeignKeyField(Person, backref="face", on_delete="CASCADE", on_update="CASCADE")
 
     class Meta:
         indexes = (

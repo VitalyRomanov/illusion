@@ -144,7 +144,7 @@ def image_store_main_loop(monitoring_folders, input_queue: Queue = None, output_
     Start main loop for the database and helper processes.
     :param monitoring_folders: List of folders to pass on to the crawler for monitoring.
     :param input_queue: queue for receiving messages from gui
-    :param output_queue: queue for sentding messages back to gui
+    :param output_queue: queue for sending messages back to gui
     :return:
     """
     image_store = ImageStore()  # should this be moved inside process manager?
