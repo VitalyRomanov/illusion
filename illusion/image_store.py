@@ -1,16 +1,14 @@
 import hashlib
 import os
-from multiprocessing import Process
-from multiprocessing import Queue
-from queue import Empty
+from enum import Enum
 
 import illusion.datamodel as dm
-from illusion.crawler import Crawler
+from illusion.protocol import Message
 
 
 class Image:
-    def __init__(self, id_=None, path=None, md5=None, faces_detected=None, tags=None, faces=None):
-        self.id = id_
+    def __init__(self, id=None, path=None, md5=None, faces_detected=None, tags=None, faces=None):
+        self.id = id
         self.path = path
         self.md5 = md5
         self.faces_detected = faces_detected
@@ -23,13 +21,14 @@ class Image:
     @classmethod
     def wrap(cls, image):
         return cls(
-            id_=image.id, path=image.path, md5=image.md5, faces_detected=image.faces_detected,
+            id=image.id, path=image.path, md5=image.md5, faces_detected=image.faces_detected,
             tags={t.tag.name for t in image.tags}, faces=[Face.wrap(face) for face in image.faces]
         )
 
 
 class Face:
-    def __init__(self, x, y, w, h, deleted, person):
+    def __init__(self, id, x, y, w, h, deleted, person):
+        self.id = id
         self.x = x
         self.y = y
         self.w = w
@@ -40,77 +39,34 @@ class Face:
     @classmethod
     def wrap(cls, face):
         return cls(
-            x=face.x, y=face.y, w=face.w, h=face.h, deleted=face.deleted, person=Person.wrap(face.person)
+            id=face.id, x=face.x, y=face.y, w=face.w, h=face.h, deleted=face.deleted, person=Person.wrap(face.person)
         )
 
 
 class Person:
-    def __init__(self, id_, name):
-        self.id = id_
+    def __init__(self, id, name):
+        self.id = id
         self.name = name
 
     @classmethod
     def wrap(cls, person):
-        return Person(id_=person.id, name=person.name)
-
-
-class CrawlManager:
-    def __init__(self, monitoring_folders):
-        self.monitoring_folders = monitoring_folders
-        self.new_images_queue = Queue()
-        self.crawler = Crawler(new_images_queue=self.new_images_queue)
-
-        self.crawler_proc = None
-
-        self.run()
-
-    def run(self):
-        self.crawler_proc = Process(target=self.crawler.find_in_dirs, args=(self.monitoring_folders,))
-        self.crawler_proc.start()
-
-    def fetch(self):
-        new_images = []
-        while not self.new_images_queue.empty():
-            new_images.append(self.new_images_queue.get())
-        return new_images
-
-
-class ProcessManager:
-    def __init__(self, image_store, monitoring_folders, input_queue, output_queue):
-        self.image_store = image_store
-        self.crawl_manager = CrawlManager(monitoring_folders)
-        self.crawl_manager.run()
-        self.input_queue = input_queue
-        self.output_queue = output_queue
-
-    def check_new_images(self):
-        """
-        Get new images from the crawler and add them to the DB
-        :return:
-        """
-        new_images = self.image_store.add_images(self.crawl_manager.fetch())
-
-        if new_images:
-            self.output_queue.put({"message": "new_images", "content": new_images})
-
-        self.crawl_manager.run()
-
-    def wait_for_incoming(self):
-        """
-        Wait for messages from gui. This is intended to be the longest part of the main loop
-        :return:
-        """
-        try:
-            self.input_queue.get(timeout=5)  # TODO adjust timeout
-        except Empty:
-            pass
+        return Person(id=person.id, name=person.name)
 
 
 class ImageStore:
+
+    class InboxTypes(Enum):
+        GET_ALL = 1  # request to send all existing images arrived
+        NEW_IMAGES = 2  # new images have arrived
+
+    class OutboxTypes(Enum):
+        EXISTING = 1  # sending existing images
+        ADDED = 2  # sending images that have been added
+
     def __init__(self):
         pass
 
-    def get_existing(self):
+    def get_all(self):
         return dm.Image.select()
 
     def add_images(self, paths):
@@ -138,25 +94,25 @@ class ImageStore:
             image = dm.Image.create(path=path, md5=md5)
             return Image.wrap(image)
 
+    def handle_message(self, message):
+        if message.descriptor == ImageStore.InboxTypes.GET_ALL:
+            return Message(ImageStore.OutboxTypes.EXISTING, content=[Image.wrap(image) for image in self.get_all()])
+        elif message.descriptor == ImageStore.InboxTypes.NEW_IMAGES:
+            return Message(ImageStore.OutboxTypes.ADDED, content=self.add_images(message.content))
+        return None
 
-def image_store_main_loop(monitoring_folders, input_queue: Queue = None, output_queue: Queue = None):
-    """
-    Start main loop for the database and helper processes.
-    :param monitoring_folders: List of folders to pass on to the crawler for monitoring.
-    :param input_queue: queue for receiving messages from gui
-    :param output_queue: queue for sending messages back to gui
-    :return:
-    """
-    image_store = ImageStore()  # should this be moved inside process manager?
 
-    existing_images = [Image.wrap(image) for image in image_store.get_existing()]
-    output_queue.put({"message": "existing", "content": existing_images})
 
-    proc_manager = ProcessManager(image_store, monitoring_folders, input_queue, output_queue)
+
+
+def start_image_store(inbox_queue, outbox_queue):
+    image_store = ImageStore()
 
     while True:
-        proc_manager.wait_for_incoming()
-        proc_manager.check_new_images()
+        message = inbox_queue.get()
+        outbox_queue.put(
+            image_store.handle_message(message)
+        )
 
 
 # class _Tag:
@@ -230,7 +186,7 @@ def image_store_main_loop(monitoring_folders, input_queue: Queue = None, output_
 
 # class _Image:
 #
-#     face_extractor = FaceExtractor("/Volumes/External/dev/illusion/haarcascade_frontalface_default.xml")
+#     # face_extractor = FaceExtractor("/Volumes/External/dev/illusion/haarcascade_frontalface_default.xml")
 #     histogram_index = None
 #
 #     def __init__(self, path=None, from_id=None):
@@ -315,6 +271,9 @@ def image_store_main_loop(monitoring_folders, input_queue: Queue = None, output_
 #     def remove_tags(self, tags):
 #         for tag in tags:
 #             self._tags.pop(tag)
+#
+#     def wrap(self, image):
+#         self._image = image
 
 
 # class _Person:
@@ -387,10 +346,10 @@ def image_store_main_loop(monitoring_folders, input_queue: Queue = None, output_
 #     print()
 
 
-def main_loop_test():
-    image_store_main_loop()
+# def main_loop_test():
+#     image_store_main_loop()
 
 
-if __name__ == "__main__":
-    main_loop_test()
+# if __name__ == "__main__":
+#     main_loop_test()
 
