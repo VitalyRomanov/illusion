@@ -1,7 +1,7 @@
 import json
-import logging
 import os
 import configparser
+from enum import Enum
 from pathlib import Path
 from pprint import pprint
 from multiprocessing import Process
@@ -10,6 +10,14 @@ from time import sleep
 
 
 class App:
+
+    class InboxTypes(Enum):
+        EXISTING = 1
+        NEW_IMAGES = 2
+
+    class OutboxTypes(Enum):
+        GET = 1
+
     def __init__(self):
         self.set_conf_location()
 
@@ -57,31 +65,31 @@ class App:
         if not os.path.isdir(self.thumbnails_path):
             os.mkdir(self.thumbnails_path)
 
-    def init_image_store(self):
+    def init_process_manager(self):
         """
         Start image store main loop in a separate process.
         :return:
         """
-        from illusion.DbPopulator import image_store_main_loop
-        self.image_store_outbox = Queue()
-        self.image_store_inbox = Queue()
-        self.image_store_proc = Process(
-            target=image_store_main_loop, args=(
-                self.config["monitoring_folders"], self.image_store_outbox, self.image_store_inbox
+        self.to_process_manager = Queue()
+        self.from_process_manager = Queue()
+
+        from illusion.process_manager import start_process_manager
+        self.process_manager_proc = Process(
+            target=start_process_manager, args=(
+                self.config, self.to_process_manager, self.from_process_manager
             )
         )
-        self.image_store_proc.start()
+        self.process_manager_proc.start()
 
     def exec(self):
-        self.init_image_store()
+        self.init_process_manager()
 
         while True:
-            while not self.image_store_inbox.empty():
+            while not self.from_process_manager.empty():
                 # instead of checking incoming messages in the loop, an event listener should be created
                 # look into signals and slots in PyQt
-                incoming = self.image_store_inbox.get()
-                logging.info(f"Received message {incoming['message']}")
-                print(incoming)
+                incoming = self.from_process_manager.get()
+                pprint(f"Message type: {incoming.descriptor}, content: {incoming.content}")
             sleep(3) # ??? this needs to be run together with GUI
 
 
