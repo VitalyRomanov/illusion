@@ -1,5 +1,8 @@
 from collections import Set
+from enum import Enum
 from pathlib import Path
+from queue import Empty
+from time import sleep
 
 
 class Crawler:
@@ -8,6 +11,13 @@ class Crawler:
     keeps track of them in __scanned_files__ (existing file records are updated if last update timestamp has changed),
     shares newly found images via __new_images_queue__ queue
     """
+
+    class InboxTypes(Enum):
+        EXISTING = 1  # existing images arrived
+
+    class OutboxTypes(Enum):
+        NEW_IMAGES = 1  # sending discovered images
+
     __new_images_queue__ = None
     __scanned_files__ = set()
     __extensions__ = ['.jpg', '.jpeg', '.png']
@@ -27,7 +37,7 @@ class Crawler:
         path_pattern = ('**' if recursive else '*') + "/*"
         for file in dir_path.glob(path_pattern):
             if file.suffix.lower() in self.__extensions__:
-                if file.name not in self.__scanned_files__:
+                if file not in self.__scanned_files__:
                     self.__new_images_queue__.put(file.absolute())
                     self.__scanned_files__.add(file.absolute())
                     # print(file)
@@ -51,3 +61,14 @@ class Crawler:
             file = Path(file_name)
             if not file.is_file() or not file.exists():
                 self.__scanned_files__.remove(file_name)
+
+
+def start_crawler(inbox_queue, output_queue, monitoring_folders, scan_every=10):
+    crawler = Crawler(new_images_queue=output_queue)
+
+    while True:
+        try:
+            message = inbox_queue.get(timeout=scan_every)
+        except Empty:
+            pass
+        crawler.find_in_dirs(monitoring_folders)
