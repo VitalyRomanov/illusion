@@ -1,5 +1,6 @@
 import cv2
 
+
 class FaceExtractor:
     def __init__(self, model_path) -> None:
         self.face_cascade = cv2.CascadeClassifier(model_path)

@@ -12,8 +12,8 @@ from time import sleep
 class App:
 
     class InboxTypes(Enum):
-        EXISTING = 1
-        NEW_IMAGES = 2
+        EXISTING_IMAGES = 1
+        ADDED_IMAGES = 2
 
     class OutboxTypes(Enum):
         GET = 1
@@ -36,7 +36,7 @@ class App:
     def set_conf_location(self):
         self.conf_dir = os.path.join(Path.home(), ".illusion")
         self.conf_file = os.path.join(self.conf_dir, "conf")
-        os.environ["ILLUSION_CONF"] = self.conf_dir
+        # os.environ["ILLUSION_CONF_DIR"] = self.conf_dir
 
     def set_config(self):
         config = configparser.ConfigParser()
@@ -44,7 +44,8 @@ class App:
             config.read(self.conf_file)
         else:
             config['DEFAULT'] = {
-                "monitoring_folders": json.dumps([input("Folder for monitoring")])
+                "monitoring_folders": json.dumps([input("Folder for monitoring")]),
+                "config_dir": json.dumps(self.conf_dir)
             }
             with open(self.conf_file, 'w') as configfile:
                 config.write(configfile)

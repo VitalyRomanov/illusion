@@ -13,7 +13,7 @@ class Crawler:
     """
 
     class InboxTypes(Enum):
-        EXISTING = 1  # existing images arrived
+        SET_EXISTING_IMAGES = 1  # existing images arrived
 
     class OutboxTypes(Enum):
         NEW_IMAGES = 1  # sending discovered images

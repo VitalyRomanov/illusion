@@ -12,7 +12,7 @@ class ProcessManager:
     def __init__(self, config, from_gui, to_gui):
         self.config = config
         self.create_image_store()
-        self.create_crawler()
+        self.create_image_crawler()
         self.from_gui = from_gui
         self.to_gui = to_gui
 
@@ -20,44 +20,44 @@ class ProcessManager:
 
     def request_existing_images(self):
         self.to_image_store.put(
-            Message(ImageStore.InboxTypes.GET_ALL, content=None)
+            Message(ImageStore.InboxTypes.GET_EXISTING_IMAGES, content=None)
         )
 
     def create_image_store(self):
         self.to_image_store = Queue()
         self.from_image_store = Queue()
-        self.image_store_proc = Process(target=start_image_store, args=(self.to_image_store, self.from_image_store))
+        self.image_store_proc = Process(target=start_image_store, args=(self.config, self.to_image_store, self.from_image_store))
         self.image_store_proc.start()
 
-    def create_crawler(self):
-        self.to_crawler = Queue()
-        self.from_crawler = Queue()
-        self.crawler_proc = Process(target=start_crawler, args=(self.to_crawler, self.from_crawler, self.config["monitoring_folders"]))
-        self.crawler_proc.start()
+    def create_image_crawler(self):
+        self.to_image_crawler = Queue()
+        self.from_image_crawler = Queue()
+        self.image_crawler_proc = Process(target=start_crawler, args=(self.to_image_crawler, self.from_image_crawler, self.config["monitoring_folders"]))
+        self.image_crawler_proc.start()
 
-    def crawler_fetch(self):
+    def fetch_from_crawler(self):
         new_images = []
-        while not self.from_crawler.empty():
-            new_images.append(self.from_crawler.get())
+        while not self.from_image_crawler.empty():
+            new_images.append(self.from_image_crawler.get())
 
         if len(new_images) > 0:
             self.to_image_store.put(
-                Message(ImageStore.InboxTypes.NEW_IMAGES, content=new_images)
+                Message(ImageStore.InboxTypes.ADD_NEW_IMAGES, content=new_images)
             )
 
-    def image_store_fetch(self):
+    def fetch_from_image_store(self):
         while not self.from_image_store.empty():
             message = self.from_image_store.get()
-            if message.descriptor == ImageStore.OutboxTypes.EXISTING:
+            if message.descriptor == ImageStore.OutboxTypes.EXISTING_IMAGES:
                 self.to_gui.put(
-                    Message(App.InboxTypes.EXISTING, content=message.content)
+                    Message(App.InboxTypes.EXISTING_IMAGES, content=message.content)
                 )
-            elif message.descriptor == ImageStore.OutboxTypes.ADDED:
+            elif message.descriptor == ImageStore.OutboxTypes.ADDED_IMAGES:
                 self.to_gui.put(
-                    Message(App.InboxTypes.NEW_IMAGES, content=message.content)
+                    Message(App.InboxTypes.ADDED_IMAGES, content=message.content)
                 )
 
-    def gui_fetch(self):
+    def fetch_from_gui(self):
         while not self.from_gui.empty():
             message = self.from_image_store.get()
 
@@ -66,9 +66,9 @@ class ProcessManager:
         Wait for messages from gui. This is intended to be the longest part of the main loop
         :return:
         """
-        self.gui_fetch()
-        self.crawler_fetch()
-        self.image_store_fetch()
+        self.fetch_from_gui()
+        self.fetch_from_crawler()
+        self.fetch_from_image_store()
         sleep(3)
 
 
