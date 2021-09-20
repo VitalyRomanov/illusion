@@ -4,7 +4,7 @@ from enum import Enum
 from os.path import join
 
 from illusion.image_store.datamodel import get_database
-from illusion.protocol import Message
+from illusion.protocol import Message, AbstractWorker
 
 
 class ImageObject:
@@ -67,7 +67,7 @@ class Person(ImageObject):
         return Person(id=person.id, name=person.name)
 
 
-class ImageStore:
+class ImageStore(AbstractWorker):
 
     class InboxTypes(Enum):
         GET_EXISTING_IMAGES = 1  # request to send all existing images arrived
@@ -77,22 +77,24 @@ class ImageStore:
         EXISTING_IMAGES = 1  # sending existing images
         ADDED_IMAGES = 2  # sending images that have been added
 
-    def __init__(self, config):
+    def __init__(self, config, inbox_queue, outbox_queue):
         self.config = config
+        self.inbox_queue = inbox_queue
+        self.outbox_queue = outbox_queue
         self.ImageTable, self.TagTable, self.PersonTable, \
-        self.FaceTable, self.ImageTagTable, self.FacePersonTable = \
-            get_database(join(config['config_dir'], "illusion.db"))
+            self.FaceTable, self.ImageTagTable, self.FacePersonTable = \
+            get_database(config["db_loc"])
 
-    def add_images(self, paths):
+    def _add_images(self, paths):
         added = []
         for image_path in paths:
-            new_id = self.add_image(image_path)
+            new_id = self._add_image(image_path)
             if new_id is not None:
                 added.append(new_id)
 
         return added
 
-    def add_image(self, path):
+    def _add_image(self, path):
         if os.path.isfile(path):
             md5 = hashlib.md5(open(path, 'rb').read()).hexdigest()
         else:
@@ -105,13 +107,13 @@ class ImageStore:
             image.save()
             # TODO
             # This could be an issue when an image with the same name was added
-            # but the image itself has changed.
+            # but the image itself has changed. GUI will not be notified
             return None
         else:
             image = self.ImageTable.create_image(path=path, md5=md5)
             return Image.from_datamodel(image)
 
-    def handle_message(self, message):
+    def _handle_message(self, message):
         if message.descriptor == ImageStore.InboxTypes.GET_EXISTING_IMAGES:
             return Message(
                 ImageStore.OutboxTypes.EXISTING_IMAGES,
@@ -120,19 +122,19 @@ class ImageStore:
         elif message.descriptor == ImageStore.InboxTypes.ADD_NEW_IMAGES:
             return Message(
                 ImageStore.OutboxTypes.ADDED_IMAGES,
-                content=self.add_images(message.content)
+                content=self._add_images(message.content)
             )
         return None
 
 
-def start_image_store(config, inbox_queue, outbox_queue):
-    image_store = ImageStore(config)
-
-    while True:
-        message = inbox_queue.get()
-        outbox_queue.put(
-            image_store.handle_message(message)
-        )
+# def start_image_store(config, inbox_queue, outbox_queue):
+#     image_store = ImageStore(config)
+#
+#     while True:
+#         message = inbox_queue.get()
+#         outbox_queue.put(
+#             image_store.handle_message(message)
+#         )
 
 
 # class _Tag:
@@ -372,4 +374,3 @@ def start_image_store(config, inbox_queue, outbox_queue):
 
 # if __name__ == "__main__":
 #     main_loop_test()
-
