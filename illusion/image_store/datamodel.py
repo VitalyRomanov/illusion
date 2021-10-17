@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import peewee as pw
 
 
@@ -13,13 +15,18 @@ def get_database(database_path):
         path = pw.CharField(max_length=4096, index=True, unique=True)
         md5 = pw.CharField(index=True)  # do not make this unique. this will be used to find duplicates
         faces_detected = pw.BooleanField(default=False)
+        tags_detected = pw.BooleanField(default=False)
 
         @classmethod
         def create_image(cls, path=None, md5=None):
+            if isinstance(path, Path):
+                path = str(path.resolve())
             return cls.create(path=path, md5=md5)
 
         @classmethod
         def get_image_if_exists(cls, id=None, path=None):
+            if isinstance(path, Path):
+                path = str(path.resolve())
             try:
                 if id is not None:
                     return cls.get(id=id)
@@ -65,8 +72,16 @@ def get_database(database_path):
             return tag
 
     class Person(IllusionDb):
-        id = pw.AutoField()
+        id = pw.IntegerField(primary_key=True)
         name = pw.CharField(index=True, null=True)
+
+        @classmethod
+        def get_or_create(cls, id, name=None):
+            try:
+                tag = cls.get(id=id)
+            except:  # TagDoesNotExist:
+                tag = cls.create(id=id, name=name)
+            return tag
 
     class Face(IllusionDb):
         id = pw.AutoField()
@@ -79,9 +94,19 @@ def get_database(database_path):
         h = pw.IntegerField()
         w = pw.IntegerField()
 
+        @classmethod
+        def create_face(
+                cls, image, x, y, w, h, thumbnail_path=None
+                    ):
+            if thumbnail_path is not None and isinstance(thumbnail_path, Path):
+                thumbnail_path = str(thumbnail_path.resolve())
+            return cls.create(
+                image=image, thumbnail_path=thumbnail_path, x=x, y=y, w=w, h=h
+            )
+
     class FacePerson(IllusionDb):
         face = pw.ForeignKeyField(Face, backref="person", on_delete="CASCADE", on_update="CASCADE")
-        person = pw.ForeignKeyField(Person, backref="face", on_delete="CASCADE", on_update="CASCADE")
+        person = pw.ForeignKeyField(Person, backref="faces", on_delete="CASCADE", on_update="CASCADE")
 
         class Meta:
             indexes = (

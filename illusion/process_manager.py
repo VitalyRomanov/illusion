@@ -1,11 +1,11 @@
 from enum import Enum
 from multiprocessing import Process
 from multiprocessing import Queue
-from time import sleep
+from typing import List
 
 from illusion.analyzer import ImageAnalyzer
 from illusion.crawler import Crawler
-from illusion.image_store import ImageStore
+from illusion.image_store import ImageStore, Image
 from illusion.protocol import Message, AbstractWorker, start_worker
 
 
@@ -25,6 +25,7 @@ class ProcessManager(AbstractWorker):
     class OutboxTypes(Enum):
         EXISTING_IMAGES = 1
         ADDED_IMAGES = 2
+        UPDATED_METADATA = 3
 
     def __init__(self, config, inbox_queue, outbox_queue):
         self.config = config
@@ -33,13 +34,16 @@ class ProcessManager(AbstractWorker):
 
         self._create_image_store()
         self._create_image_crawler()
+        self._create_image_analyzer()
 
         self.message_processing_table = {
             ImageStore.OutboxTypes.EXISTING_IMAGES: self._received_existing_images,
             ImageStore.OutboxTypes.ADDED_IMAGES: self._received_images_added_to_image_store,
+            ImageStore.OutboxTypes.UPDATED_METADATA: self._send_updates_to_app,
             Crawler.OutboxTypes.DISCOVERED_IMAGES: self._received_discovered_images,
             ProcessManager.InboxTypes.GET_EXISTING_IMAGES: self._request_existing_images,
-            ImageAnalyzer.OutboxTypes.UPDATE_METADATA: self._set_new_metadata
+            ImageAnalyzer.OutboxTypes.UPDATE_METADATA: self._set_new_metadata,
+            ImageAnalyzer.OutboxTypes.FACES_IDENTIFIED: self._set_new_metadata
         }
 
     def _create_image_store(self):
@@ -68,16 +72,19 @@ class ProcessManager(AbstractWorker):
             Message(ProcessManager.OutboxTypes.EXISTING_IMAGES, content=message.content)
         )
         self.to_image_crawler_queue.put(
-            Message(Crawler.InboxTypes.SET_EXISTING_IMAGES, content=message.content)
+            Message(
+                Crawler.InboxTypes.SET_EXISTING_IMAGES,
+                content=[image.path for image in message.content]
+            )
         )
+        self._send_images_for_analysis(message.content)
+        self._send_faces_for_analysis(message.content)
 
     def _received_images_added_to_image_store(self, message: Message):
         self.outbox_queue.put(
             Message(ProcessManager.OutboxTypes.ADDED_IMAGES, content=message.content)
         )
-        self.to_image_analyzer_queue.put(
-            Message(ImageAnalyzer.InboxTypes.ANALYZE_NEW_IMAGES, content=message.content)
-        )
+        self._send_images_for_analysis(message.content)
 
     def _received_discovered_images(self, message: Message):
         self.to_image_store_queue.put(
@@ -90,7 +97,38 @@ class ProcessManager(AbstractWorker):
         )
 
     def _set_new_metadata(self, message: Message):
-        pass
+        self.to_image_store_queue.put(
+            Message(ImageStore.InboxTypes.UPDATE_METADATA, message.content)
+        )
+
+    def _send_images_for_analysis(self, images: List[Image]):
+        not_analyzed = [
+            image for image in images if image.faces_detected is False or image.tags_detected is False
+        ]
+        if len(not_analyzed) > 0:
+            self.to_image_analyzer_queue.put(
+                Message(ImageAnalyzer.InboxTypes.ANALYZE_NEW_IMAGES, content=not_analyzed)
+            )
+
+    def _send_faces_for_analysis(self, images: List[Image]):
+        faces_for_analysis = []
+        for image in images:
+            for face in image.faces:
+                # id is assigned after face was written to the database
+                if face.recognized is False and face.id is not None:
+                    faces_for_analysis.append(face)
+
+        if len(faces_for_analysis) > 0:
+            self.to_image_analyzer_queue.put(
+                Message(ImageAnalyzer.InboxTypes.ANALYZE_FACES, content=faces_for_analysis)
+            )
+
+    def _send_updates_to_app(self, message: Message):
+        self.outbox_queue.put(Message(
+            ProcessManager.OutboxTypes.UPDATED_METADATA,
+            message.content
+        ))
+        self._send_faces_for_analysis(message.content)
 
     def _handle_message(self, message):
         if message.descriptor in self.message_processing_table:

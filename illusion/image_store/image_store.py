@@ -1,26 +1,59 @@
 import hashlib
-import os
 from enum import Enum
-from os.path import join
+from pathlib import Path
+from typing import List, Union
+
+import cv2
 
 from illusion.image_store.datamodel import get_database
 from illusion.protocol import Message, AbstractWorker
 
 
-class ImageObject:
+class DatamodelObject:
     def __repr__(self):
         content_string = ', '.join(f"{key}: {value}" for key, value in self.__dict__.items())
         return f"{self.__class__.__name__}({content_string})"
 
 
-class Image(ImageObject):
-    def __init__(self, id=None, path=None, md5=None, faces_detected=None, tags=None, faces=None):
+class Image(DatamodelObject):
+    def __init__(self, id=None, path=None, md5=None, faces_detected=None, tags_detected=None, tags=None, faces=None):
         self.id = id
         self.path = path
         self.md5 = md5
         self.faces_detected = faces_detected
-        self.tags = tags
         self.faces = faces
+        self.tags = tags
+        self.tags_detected = tags_detected
+        self.was_updated = False
+
+        if self.path is not None and isinstance(self.path, str):
+            self.path = Path(self.path)
+
+    def add_faces(self, new_faces):
+        if self.faces is None:
+            self.faces = []
+        self.faces.extend(new_faces)
+        self.was_updated = True
+
+    def set_faces_detected_flag(self):
+        self.faces_detected = True
+        self.was_updated = True
+
+    def add_tags(self, tags):
+        self.tags.update(tags)
+        self.was_updated = True
+
+    def set_tags_detected_flag(self):
+        self.tags_detected = True
+
+    def read_image_content(self):
+        """
+        Read image from the disk
+        :return:
+        """
+        if isinstance(self.path, Path):
+            self.path = str(self.path.resolve())
+        return cv2.imread(self.path)
 
     # def __repr__(self):
     #     return f"Image({self.__dict__})"
@@ -29,42 +62,83 @@ class Image(ImageObject):
     def from_datamodel(cls, image):
         return cls(
             id=image.id, path=image.path, md5=image.md5, faces_detected=image.faces_detected,
+            tags_detected=image.tags_detected,
             tags={t.tag.name for t in image.tags}, faces=[Face.from_datamodel(face) for face in image.faces]
         )
 
 
-class Face(ImageObject):
-    def __init__(self, id, x, y, w, h, deleted, person):
+class Face(DatamodelObject):
+    def __init__(
+            self, id, x, y, w, h, deleted, person, thumbnail_path=None, thumbnail=None, image_id=None, recognized=False
+    ):
         self.id = id
+        self.image_id = image_id
         self.x = x
         self.y = y
         self.w = w
         self.h = h
+        self._thumbnail = cv2.resize(thumbnail, (64, 64)) if thumbnail is not None else None
+        self.thumbnail_path = thumbnail_path
         self.deleted = deleted
         self.person = person
+        self.recognized = recognized
+
+        if self.thumbnail_path is not None and isinstance(self.thumbnail_path, str):
+            self.thumbnail_path = Path(self.thumbnail_path)
+
+    def set_person(self, person_id):
+        self.person = person_id
+
+    def set_person_identified_flag(self):
+        self.recognized = True
 
     # def __repr__(self):
     #     return f"Face({self.__dict__})"
 
+    def get_thumbnail(self):
+        if self._thumbnail is None:
+            self._thumbnail = cv2.imread(str(self.thumbnail_path.resolve()))
+        return self._thumbnail
+
+    def save_thumbnail(self, save_dir: Path):
+        thumbnail_name = f"{hashlib.md5(self._thumbnail.tobytes()).hexdigest()}.jpeg"
+        self.thumbnail_path = save_dir.joinpath(thumbnail_name)
+        # self.thumbnail_path = join(save_dir, thumbnail_name)
+        cv2.imwrite(str(self.thumbnail_path.resolve()), self._thumbnail)
+
     @classmethod
     def from_datamodel(cls, face):
+        faceperson = [p for p in face.person]
+        if len(faceperson) == 0:
+            person = None
+        elif len(faceperson) == 1:
+            person = faceperson[0].person
+        else:
+            raise Exception()
         return cls(
-            id=face.id, x=face.x, y=face.y, w=face.w, h=face.h, deleted=face.deleted, person=Person.from_datamodel(
-                face.person)
+            id=face.id, x=face.x, y=face.y, w=face.w, h=face.h, deleted=face.deleted,
+            thumbnail_path=face.thumbnail_path, person=Person.from_datamodel(person), image_id=face.image.id,
+            recognized=face.recognized
         )
 
 
-class Person(ImageObject):
-    def __init__(self, id, name):
+class Person(DatamodelObject):
+    def __init__(self, id, name, image_ids=None):
         self.id = id
         self.name = name
+        self.image_ids = image_ids
 
     # def __repr__(self):
     #     return f"Person({self.__dict__})"
+    def set_image_ids(self, image_ids):
+        self.image_ids = image_ids
 
     @classmethod
     def from_datamodel(cls, person):
-        return Person(id=person.id, name=person.name)
+        if person is None:
+            return None
+        image_ids = [f.face.image.id for f in person.faces]
+        return Person(id=person.id, name=person.name, image_ids=image_ids)
 
 
 class ImageStore(AbstractWorker):
@@ -72,10 +146,12 @@ class ImageStore(AbstractWorker):
     class InboxTypes(Enum):
         GET_EXISTING_IMAGES = 1  # request to send all existing images arrived
         ADD_NEW_IMAGES = 2  # new images have arrived
+        UPDATE_METADATA = 3
 
     class OutboxTypes(Enum):
         EXISTING_IMAGES = 1  # sending existing images
         ADDED_IMAGES = 2  # sending images that have been added
+        UPDATED_METADATA = 3
 
     def __init__(self, config, inbox_queue, outbox_queue):
         self.config = config
@@ -83,7 +159,7 @@ class ImageStore(AbstractWorker):
         self.outbox_queue = outbox_queue
         self.ImageTable, self.TagTable, self.PersonTable, \
             self.FaceTable, self.ImageTagTable, self.FacePersonTable = \
-            get_database(config["db_loc"])
+            get_database(config.db_loc)
 
     def _add_images(self, paths):
         added = []
@@ -94,8 +170,8 @@ class ImageStore(AbstractWorker):
 
         return added
 
-    def _add_image(self, path):
-        if os.path.isfile(path):
+    def _add_image(self, path: Path):
+        if path.is_file():
             md5 = hashlib.md5(open(path, 'rb').read()).hexdigest()
         else:
             return None
@@ -113,16 +189,75 @@ class ImageStore(AbstractWorker):
             image = self.ImageTable.create_image(path=path, md5=md5)
             return Image.from_datamodel(image)
 
+    def _update_image_metadata(self, image: Image):
+        if image.was_updated:
+            pw_image = self.ImageTable.get_image_if_exists(image.id)
+            if pw_image.tags_detected is False and image.tags_detected is True:
+                # {t.tag.name for t in self._image.tags}
+                for tag in image.tags:  # TODO check for duplicates
+                    pw_tag = self.TagTable.get_or_create(tag)
+                    self.ImageTagTable.create(image=pw_image, tag=pw_tag)
+                    pw_tag.save()
+                pw_image.tags_detected = True
+
+            if pw_image.faces_detected is False and image.faces_detected is True:
+                for face in image.faces:
+                    if face.id is not None:
+                        continue
+                    face.save_thumbnail(save_dir=self.config.face_thumbnails_loc)
+                    pw_face = self.FaceTable.create_face(
+                        image=pw_image, thumbnail_path=face.thumbnail_path,
+                        x=face.x, y=face.y, w=face.w, h=face.h
+                    )
+                    face.id = pw_face.id
+                    pw_face.save()
+                pw_image.faces_detected = True
+            pw_image.save()
+            return image
+        return None
+
+    def _update_face_metadata(self, face: Face):
+        pw_face = self.FaceTable.get(id=face.id)
+        if pw_face.recognized is False and face.recognized is True:
+            pw_person = self.PersonTable.get_or_create(id=face.person.id)
+            self.FacePersonTable.create(face=face.id, person=pw_person.id)
+            pw_face.recognized = True
+            pw_face.save()
+            face.person = Person.from_datamodel(pw_person)
+            return face
+        return None
+
+    def _update_metadata(self, updated_objects: List[Union[Image, Face]]):
+        updated = []
+
+        for updated_object in updated_objects:
+            if isinstance(updated_object, Image):
+                updated_ = self._update_image_metadata(updated_object)
+            elif isinstance(updated_object, Face):
+                updated_ = self._update_face_metadata(updated_object)
+            else:
+                raise ValueError("Unrecognized object type:", type(updated_object))
+            if updated_ is not None:
+                updated.append(updated_object)
+
+        return updated
+
     def _handle_message(self, message):
         if message.descriptor == ImageStore.InboxTypes.GET_EXISTING_IMAGES:
+            images = [Image.from_datamodel(image) for image in self.ImageTable.get_all_images()]
             return Message(
                 ImageStore.OutboxTypes.EXISTING_IMAGES,
-                content=[Image.from_datamodel(image) for image in self.ImageTable.get_all_images()]
+                content=images
             )
         elif message.descriptor == ImageStore.InboxTypes.ADD_NEW_IMAGES:
             return Message(
                 ImageStore.OutboxTypes.ADDED_IMAGES,
                 content=self._add_images(message.content)
+            )
+        elif message.descriptor == ImageStore.InboxTypes.UPDATE_METADATA:
+            return Message(
+                ImageStore.OutboxTypes.UPDATED_METADATA,
+                self._update_metadata(message.content)
             )
         return None
 

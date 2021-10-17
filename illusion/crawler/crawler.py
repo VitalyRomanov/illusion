@@ -27,6 +27,7 @@ class Crawler(AbstractWorker):
         self.inbox_queue = inbox_queue
         self.outbox_queue = outbox_queue
         self.__new_images_queue__ = []
+        self._pause_crawling = True  # pause before list of existing images arrives
 
         self.__scanned_files__.update(discovered_files)
 
@@ -42,15 +43,15 @@ class Crawler(AbstractWorker):
         for file in dir_path.glob(path_pattern):
             if file.suffix.lower() in self.__extensions__:
                 if file not in self.__scanned_files__:
-                    self.__new_images_queue__.append(file.absolute())
-                    self.__scanned_files__.add(file.absolute())
+                    self.__new_images_queue__.append(file.resolve())
+                    self.__scanned_files__.add(file.resolve())
                     # print(file)
 
     def find_in_dirs(self, dirs, recursive=True):
         """
         Finds untracked or changed files having extension listed in __extensions__ tuple in the given directories;
         Puts them into __new_images_queue__
-        :param dir_name: folder to search in (string)
+        :param dirs: folder to search in (string)
         :param recursive: search recursively on the folder (boolean)
         """
         for dir in dirs:
@@ -74,15 +75,17 @@ class Crawler(AbstractWorker):
     def _handle_message(self, message):
         if message.descriptor == Crawler.InboxTypes.SET_EXISTING_IMAGES:
             self.__scanned_files__.update(set(message.content))
+            self._pause_crawling = False
 
     def handle_incoming(self):
         try:
             self._handle_message(
-                self.inbox_queue.get(timeout=self.config["crawler_scan_interval"])
+                self.inbox_queue.get(timeout=self.config.crawler_scan_interval)
             )
         except Empty:
             pass
-        self.find_in_dirs(self.config["monitoring_folders"])
+        if self._pause_crawling is False:
+            self.find_in_dirs(self.config.monitoring_folders)
 
 
 # def start_crawler(inbox_queue, output_queue, monitoring_folders, scan_every=10):

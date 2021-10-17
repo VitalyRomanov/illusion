@@ -1,13 +1,10 @@
-import json
-import os
-import configparser
-from enum import Enum
 from pathlib import Path
 from pprint import pprint
 from multiprocessing import Process
 from multiprocessing import Queue
 from time import sleep
 
+from illusion.app_config import AppConfig
 from illusion.process_manager import ProcessManager
 from illusion.protocol import start_worker, Message
 
@@ -20,13 +17,6 @@ class App:
     from_process_manager = None
     process_manager_proc = None
 
-    class InboxTypes(Enum):
-        EXISTING_IMAGES = 1
-        ADDED_IMAGES = 2
-
-    class OutboxTypes(Enum):
-        GET_EXISTING_IMAGES = 1
-
     def __init__(self):
         self._set_conf_location()
         self._set_config()
@@ -35,59 +25,76 @@ class App:
         pprint(self.config)
 
     def _set_conf_location(self):
-        self.conf_dir = os.path.join(Path.home(), ".illusion")
-        self.conf_file = os.path.join(self.conf_dir, "conf")
-        # os.environ["ILLUSIONconf_dir"] = self.conf_dir
+        self.conf_dir = Path.home().joinpath(".illusion")
+        self.conf_file = self.conf_dir.joinpath("conf")
 
     def _set_config(self):
-        config = configparser.ConfigParser()
-        if os.path.isfile(self.conf_file):
-            config = self._read_config(config)
-        else:
-            config = self._init_config(config)
-
-        self.config = config
+        # config = configparser.ConfigParser()
+        self.config = self._read_config() if self.conf_file.is_file() else self._init_config()
+        # if self.conf_file.is_file():
+        #     config = self._read_config(config)
+        # else:
+        #     config = self._init_config(config)
+        #
+        # self.config = config
         
-    def _read_config(self, config_object):
-        config_object.read(self.conf_file)
-        config = config_object["DEFAULT"]
-        return {key: json.loads(config[key]) for key in config}
+    def _read_config(self):
+        config = AppConfig.read_config(self.conf_file)
+        return config
+        # config_object.read(self.conf_file)
+        # config = config_object["DEFAULT"]
+        # return {key: json.loads(config[key]) for key in config}
     
-    def _init_config(self, config_object):
-        if not os.path.isdir(self.conf_dir):
-            os.mkdir(self.conf_dir)
-            
-        config_dict = {
-            "monitoring_folders": [input("Folder for monitoring")],
-            "config_dir": self.conf_dir,
-            "db_loc": self._get_db_loc(),
-            "thumbnails_loc": self._get_thumbnails_loc(),
-            "face_thumbnails_loc": self._get_face_thumbnails_loc(),
-            "crawler_scan_interval": 60
-        }
+    def _init_config(self):
+        if not self.conf_dir.is_dir():
+            self.conf_dir.mkdir()
 
-        config_object['DEFAULT'] = {key: json.dumps(val) for key, val in config_dict.items()}
-        with open(self.conf_file, 'w') as configfile:
-            config_object.write(configfile)
+        config = AppConfig(
+            monitoring_folders=[Path(input("Folder for monitoring"))],
+            config_dir=self.conf_dir,
+            db_loc=self._get_db_loc(),
+            thumbnails_loc=self._get_thumbnails_loc(),
+            face_thumbnails_loc=self._get_face_thumbnails_loc(),
+            crawler_scan_interval=60,
+            face_extractor_model=self.get_face_extractor_model_loc()
+        )
+        config.write_config(self.conf_file)
 
-        return config_dict
+        # config_dict = {
+        #     "monitoring_folders": [input("Folder for monitoring")],
+        #     "config_dir": self.conf_dir,
+        #     "db_loc": self._get_db_loc(),
+        #     "thumbnails_loc": self._get_thumbnails_loc(),
+        #     "face_thumbnails_loc": self._get_face_thumbnails_loc(),
+        #     "crawler_scan_interval": 60,
+        #     "face_extractor_model": self.get_face_extractor_model_loc()
+        # }
+        #
+        # config_object['DEFAULT'] = {key: json.dumps(val) for key, val in config_dict.items()}
+        # with open(self.conf_file, 'w') as configfile:
+        #     config_object.write(configfile)
+
+        return config
         
     def _get_db_loc(self):
-        return os.path.join(self.conf_dir, "illusion.db")
+        return self.conf_dir.joinpath("illusion.db")
 
     def _get_face_thumbnails_loc(self):
-        face_thumbnails_path = os.path.join(self.conf_dir, "face_thumbnails")
-        if not os.path.isdir(face_thumbnails_path):
-            os.mkdir(face_thumbnails_path)
-            
+        face_thumbnails_path = self.conf_dir.joinpath("face_thumbnails")
+        if not face_thumbnails_path.is_dir():
+            face_thumbnails_path.mkdir()
+
         return face_thumbnails_path
 
     def _get_thumbnails_loc(self):
-        thumbnails_path = os.path.join(self.conf_dir, "thumbnails")
-        if not os.path.isdir(thumbnails_path):
-            os.mkdir(thumbnails_path)
-            
+        thumbnails_path = self.conf_dir.joinpath("thumbnails")
+        if not thumbnails_path.is_dir():
+            thumbnails_path.mkdir()
+
         return thumbnails_path
+
+    def get_face_extractor_model_loc(self):
+        return self.conf_dir.joinpath("haarcascade_frontalface_default.xml")
 
     def _init_process_manager(self):
         """
