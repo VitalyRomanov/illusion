@@ -3,10 +3,10 @@ from multiprocessing import Process
 from multiprocessing import Queue
 from typing import List
 
-from illusion.analyzer import ImageAnalyzer
-from illusion.crawler import Crawler
-from illusion.image_store import ImageStore, Image
-from illusion.protocol import Message, AbstractWorker, start_worker
+from analyzer import ImageAnalyzer
+from crawler import Crawler
+from image_store import ImageStore, Image
+from protocol import Message, AbstractWorker, start_worker
 
 
 class ProcessManager(AbstractWorker):

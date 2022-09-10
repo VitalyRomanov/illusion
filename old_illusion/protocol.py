@@ -2,7 +2,7 @@ from abc import abstractmethod
 from enum import Enum
 from multiprocessing import Queue
 
-from illusion.app_config import AppConfig
+from old_illusion.app_config import AppConfig
 
 
 class Message:

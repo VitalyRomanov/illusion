@@ -1,3 +1,6 @@
 __python__
 .DS_Store
 illusion.egg-info
+.idea
+db_local.cnf
+__pycache__

@@ -4,9 +4,9 @@ from multiprocessing import Process
 from multiprocessing import Queue
 from time import sleep
 
-from illusion.app_config import AppConfig
-from illusion.process_manager import ProcessManager
-from illusion.protocol import start_worker, Message
+from app_config import AppConfig
+from process_manager import ProcessManager
+from protocol import start_worker, Message
 
 
 class App:

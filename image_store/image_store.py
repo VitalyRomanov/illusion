@@ -5,8 +5,8 @@ from typing import List, Union
 
 import cv2
 
-from illusion.image_store.datamodel import get_database
-from illusion.protocol import Message, AbstractWorker
+from image_store import get_database
+from old_illusion.protocol import Message, AbstractWorker
 
 
 class DatamodelObject:

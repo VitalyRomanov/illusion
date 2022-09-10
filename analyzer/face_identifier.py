@@ -1,4 +1,4 @@
-from illusion.image_store import Person
+from image_store import Person
 
 
 class FaceIdentifier:

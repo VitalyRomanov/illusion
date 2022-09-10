@@ -2,7 +2,7 @@ from enum import Enum
 from pathlib import Path
 from queue import Empty
 
-from illusion.protocol import Message, AbstractWorker
+from old_illusion.protocol import Message, AbstractWorker
 
 
 class Crawler(AbstractWorker):

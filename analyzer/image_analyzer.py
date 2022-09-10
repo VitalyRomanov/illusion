@@ -1,11 +1,11 @@
 from enum import Enum
 from typing import List
 
-from illusion.analyzer.face_detector import FaceDetector
-from illusion.analyzer.face_identifier import FaceIdentifier
-from illusion.analyzer.image_tagger import ImageTagger
-from illusion.image_store import Image, Face
-from illusion.protocol import AbstractWorker, Message
+from analyzer.face_detector import FaceDetector
+from analyzer.face_identifier import FaceIdentifier
+from analyzer.image_tagger import ImageTagger
+from image_store import Image, Face
+from old_illusion.protocol import AbstractWorker, Message
 
 
 class ImageAnalyzer(AbstractWorker):

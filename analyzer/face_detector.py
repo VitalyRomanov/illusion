@@ -5,7 +5,7 @@ from typing import List
 import cv2
 import wget
 
-from illusion.image_store import Face, Image
+from image_store import Face, Image
 
 
 class FaceDetector:
