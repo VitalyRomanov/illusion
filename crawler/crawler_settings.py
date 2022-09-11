@@ -10,7 +10,7 @@ class CrawlerSettings:
     @classmethod
     def load(cls):
         config = configparser.ConfigParser()
-        config.read('config.ini')
+        config.read('../config.ini')
 
         search_dirs_str = config['DIRECTORIES']['search_dirs'].strip()
         cls.TRACKED_DIRS = set(map(str.strip, search_dirs_str.split(','))) if search_dirs_str != '' else {}

@@ -2,7 +2,7 @@ from multiprocessing import Process
 from multiprocessing import Queue
 from pathlib import Path
 
-from crawler.crawler import Crawler
+from old_illusion.crawler.crawler import Crawler
 
 if __name__ == "__main__":
     new_images = Queue()

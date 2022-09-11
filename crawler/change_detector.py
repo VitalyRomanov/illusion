@@ -19,8 +19,12 @@ def retrieve_images(search_dirs, ignore_dirs, extensions):
             if f.suffix in extensions:
                 try:
                     images[f] = f.stat().st_mtime_ns
-                except FileNotFoundError:
-                    print(Fore.CYAN, f'File {f} does not exist')
+                except FileNotFoundError as err:
+                    if f.is_symlink():
+                        print(Fore.CYAN, f'File {f} is a symlink')
+                    else:
+                        print(Fore.CYAN, f'Error while accessing file {f}')
+                        print(err)
     return images
 
 

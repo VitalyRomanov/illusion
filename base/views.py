@@ -1,7 +1,13 @@
-from django.http import HttpResponse
+from django.http import HttpRequest
 from django.shortcuts import render
 
+from base.models import Image
+from pathlib import Path
+import crawler
 
-# Create your views here.
-def index(request):
-    return HttpResponse('HI!!!')
+
+def image_list(request: HttpRequest):
+    if request.method == 'GET':
+        images = Image.objects.all()
+        context = {'images': images}
+        return render(request, 'base/image_list.html', context)
